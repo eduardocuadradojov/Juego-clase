@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Control - Experimento</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div id="game-container">
+        <h1>📊 Panel de Control en Vivo 📊</h1>
+        <p>Participantes actuales: <span id="participant-count">0</span></p>
+
+        <h2>Paradoja de Allais: Consistencia</h2>
+        <canvas id="allaisChart" width="400" height="200"></canvas>
+        <p><i>La mayoría "caerá" en la inconsistencia (A y D) por el efecto certeza.</i></p>
+        
+        <h2 style="margin-top: 40px;">Efecto Dotación: Precios de Taza</h2>
+        <canvas id="endowmentChart" width="400" height="200"></canvas>
+        <p><i>Normalmente, el precio de venta (si ya la tienes) es mayor que el de compra.</i></p>
+
+        <button onclick="clearAllData()" style="background: red; border-color: red; margin-top: 40px;">Borrar todos los datos</button>
+    </div>
+
+    <script>
+        // PEGA AQUÍ TU MISMA CONFIGURACIÓN DE FIREBASE (PASO 1)
+        const firebaseConfig = {
+            apiKey: "TU_API_KEY",
+            authDomain: "TU_AUTH_DOMAIN",
+            databaseURL: "TU_DATABASE_URL", // ¡IMPORTANTE!
+            projectId: "TU_PROJECT_ID",
+            storageBucket: "TU_STORAGE_BUCKET",
+            messagingSenderId: "TU_MESSAGING_SENDER_ID",
+            appId: "TU_APP_ID"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        let allaisChart;
+        let endowmentChart;
+
+        // --- Inicializar gráficos ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const allaisCtx = document.getElementById('allaisChart').getContext('2d');
+            allaisChart = new Chart(allaisCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Consistente', 'Inconsistente (A y D)'],
+                    datasets: [{
+                        label: 'Votos',
+                        data: [0, 0],
+                        backgroundColor: ['rgba(75, 192, 192, 0.6)', 'rgba(255, 99, 132, 0.6)'],
+                        borderColor: ['rgba(75, 192, 192, 1)', 'rgba(255, 99, 132, 1)'],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: 'white' }
+                        },
+                        x: {
+                            ticks: { color: 'white' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: 'white' } }
+                    }
+                }
+            });
+
+            const endowmentCtx = document.getElementById('endowmentChart').getContext('2d');
+            endowmentChart = new Chart(endowmentCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Precio Medio de Venta (€)', 'Precio Medio de Compra (€)'],
+                    datasets: [{
+                        label: 'Euros',
+                        data: [0, 0],
+                        backgroundColor: ['rgba(255, 206, 86, 0.6)', 'rgba(54, 162, 235, 0.6)'],
+                        borderColor: ['rgba(255, 206, 86, 1)', 'rgba(54, 162, 235, 1)'],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: 'white' }
+                        },
+                        x: {
+                            ticks: { color: 'white' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: 'white' } }
+                    }
+                }
+            });
+
+            // --- Escuchar cambios en la base de datos ---
+            database.ref('participants').on('value', (snapshot) => {
+                const participants = snapshot.val();
+                let count = 0;
+                let allaisConsistent = 0;
+                let allaisInconsistent = 0;
+                let totalSellPrice = 0;
+                let countSell = 0;
+                let totalBuyPrice = 0;
+                let countBuy = 0;
+
+                if (participants) {
+                    count = Object.keys(participants).length;
+                    Object.values(participants).forEach(p => {
+                        // Allais
+                        if (p.allaisR1 && p.allaisR2) {
+                            // Consistente: (A y C) o (B y C) o (B y D)
+                            if ((p.allaisR1 === 'A' && p.allaisR2 === 'C') ||
+                                (p.allaisR1 === 'B' && p.allaisR2 === 'C') ||
+                                (p.allaisR1 === 'B' && p.allaisR2 === 'D')) {
+                                allaisConsistent++;
+                            } else if (p.allaisR1 === 'A' && p.allaisR2 === 'D') {
+                                // Inconsistente (La Paradoja de Allais)
+                                allaisInconsistent++;
+                            }
+                        }
+                        // Endowment Effect
+                        if (p.endowmentSell !== undefined) {
+                            totalSellPrice += p.endowmentSell;
+                            countSell++;
+                        }
+                        if (p.endowmentBuy !== undefined) {
+                            totalBuyPrice += p.endowmentBuy;
+                            countBuy++;
+                        }
+                    });
+                }
+                
+                document.getElementById('participant-count').textContent = count;
+
+                // Actualizar gráfico de Allais
+                allaisChart.data.datasets[0].data = [allaisConsistent, allaisInconsistent];
+                allaisChart.update();
+
+                // Actualizar gráfico de Endowment
+                const avgSell = countSell > 0 ? totalSellPrice / countSell : 0;
+                const avgBuy = countBuy > 0 ? totalBuyPrice / countBuy : 0;
+                endowmentChart.data.datasets[0].data = [avgSell, avgBuy];
+                endowmentChart.update();
+            });
+        });
+
+        // --- Función para borrar todos los datos (útil para reiniciar el experimento) ---
+        function clearAllData() {
+            if (confirm("¿Estás seguro de que quieres borrar TODOS los datos de los participantes? Esta acción es irreversible.")) {
+                database.ref('participants').remove()
+                    .then(() => alert("Datos borrados exitosamente."))
+                    .catch((error) => console.error("Error al borrar datos:", error));
+            }
+        }
+    </script>
+</body>
+</html>
