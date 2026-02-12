@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>¿Quién quiere ser Millonario? - El Experimento</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+</head>
+<body>
+    <div id="game-container">
+        <img src="https://upload.wikimedia.org/wikipedia/en/thumb/4/4b/Who_Wants_to_Be_a_Millionaire%3F_logo.svg/1200px-Who_Wants_to_Be_a_Millionaire%3F_logo.svg.png" alt="Millionaire Logo" class="logo">
+        <h1 id="titulo">El Experimento de la Elección</h1>
+        
+        <div id="intro-screen" class="screen active">
+            <p>¡Bienvenido/a al juego! Te enfrentarás a dos rondas de decisiones que desafiarán tu lógica económica.</p>
+            <p>Tus respuestas se registrarán anónimamente para el análisis en clase.</p>
+            <button onclick="startGame()">¡EMPEZAR JUEGO!</button>
+        </div>
+
+        <div id="round1-allais" class="screen">
+            <h2>Ronda 1: La Paradoja de Allais</h2>
+            <h3>Has llegado a la final. ¿Qué premio eliges?</h3>
+            <button class="option-btn" onclick="chooseAllais('A')">A: 1.000.000€ (¡SEGUROS!)</button>
+            <button class="option-btn" onclick="chooseAllais('B')">B: APUESTA GRANDE (89% 1M, 10% 5M, 1% 0€)</button>
+        </div>
+
+        <div id="round2-allais" class="screen">
+            <h2>Ronda 2: La Paradoja de Allais</h2>
+            <h3>Han pasado 5 años. ¿Qué boleto de lotería compras?</h3>
+            <button class="option-btn" onclick="chooseAllais('C')">C: 11% de ganar 1.000.000€</button>
+            <button class="option-btn" onclick="chooseAllais('D')">D: 10% de ganar 5.000.000€</button>
+        </div>
+        
+        <div id="round3-endowment" class="screen">
+            <h2>Ronda 3: El Efecto Dotación</h2>
+            <h3>Imagina que acabas de recibir esta taza de edición limitada.</h3>
+            <img src="https://i.ibb.co/LhbkQkY/mug.png" alt="Limited Edition Mug" class="mug-img">
+            <p>¿Por cuánto dinero **LA VENDERÍAS**? (Solo el primer valor que pidas)</p>
+            <input type="number" id="sell-price" placeholder="Introduce el precio en €" min="0" step="1" required>
+            <button class="option-btn" onclick="chooseEndowmentSell()">¡VENDER!</button>
+        </div>
+
+        <div id="round4-endowment" class="screen">
+            <h2>Ronda 4: El Efecto Dotación</h2>
+            <h3>Ahora imagina que NO tienes la taza.</h3>
+            <img src="https://i.ibb.co/LhbkQkY/mug.png" alt="Limited Edition Mug" class="mug-img">
+            <p>¿Cuánto dinero **PAGARÍAS POR COMPRARLA**? (Tu oferta máxima)</p>
+            <input type="number" id="buy-price" placeholder="Introduce el precio en €" min="0" step="1" required>
+            <button class="option-btn" onclick="chooseEndowmentBuy()">¡COMPRAR!</button>
+        </div>
+
+        <div id="end-screen" class="screen">
+            <h2>¡Gracias por participar!</h2>
+            <p>Tus respuestas han sido registradas. Ahora analizaremos cómo tus decisiones se comparan con la lógica económica.</p>
+            <button onclick="restartGame()" style="margin-top: 20px;">Reiniciar juego (para otro participante)</button>
+        </div>
+
+        <p id="feedback"></p>
+    </div>
+
+    <script>
+        // PEGA AQUÍ TU CONFIGURACIÓN DE FIREBASE (PASO 1)
+        const firebaseConfig = {
+            apiKey: "TU_API_KEY",
+            authDomain: "TU_AUTH_DOMAIN",
+            databaseURL: "TU_DATABASE_URL", // ¡IMPORTANTE!
+            projectId: "TU_PROJECT_ID",
+            storageBucket: "TU_STORAGE_BUCKET",
+            messagingSenderId: "TU_MESSAGING_SENDER_ID",
+            appId: "TU_APP_ID"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        
+        // --- Variables de estado del juego ---
+        let currentScreen = 'intro-screen';
+        let participantId = null; // ID único para cada participante
+        let allaisChoice1 = '';
+        let allaisChoice2 = '';
+
+        // --- Funciones para cambiar de pantalla ---
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(screen => {
+                screen.classList.remove('active');
+            });
+            document.getElementById(screenId).classList.add('active');
+            currentScreen = screenId;
+            document.getElementById('feedback').textContent = ''; // Limpiar feedback
+        }
+
+        // --- Inicio del juego ---
+        function startGame() {
+            participantId = database.ref('participants').push().key; // Genera un ID único
+            showScreen('round1-allais');
+        }
+
+        // --- Rondas de Allais ---
+        function chooseAllais(choice) {
+            if (currentScreen === 'round1-allais') {
+                allaisChoice1 = choice;
+                database.ref('participants/' + participantId).update({ allaisR1: choice });
+                showScreen('round2-allais');
+            } else if (currentScreen === 'round2-allais') {
+                allaisChoice2 = choice;
+                database.ref('participants/' + participantId).update({ allaisR2: choice });
+                showScreen('round3-endowment'); // Siguiente juego: Efecto Dotación
+            }
+        }
+
+        // --- Ronda del Efecto Dotación (Vender) ---
+        function chooseEndowmentSell() {
+            const sellPrice = document.getElementById('sell-price').value;
+            if (sellPrice && participantId) {
+                database.ref('participants/' + participantId).update({ endowmentSell: parseFloat(sellPrice) });
+                document.getElementById('sell-price').value = ''; // Limpiar input
+                showScreen('round4-endowment');
+            } else {
+                document.getElementById('feedback').textContent = 'Por favor, introduce un precio válido.';
+            }
+        }
+
+        // --- Ronda del Efecto Dotación (Comprar) ---
+        function chooseEndowmentBuy() {
+            const buyPrice = document.getElementById('buy-price').value;
+            if (buyPrice && participantId) {
+                database.ref('participants/' + participantId).update({ endowmentBuy: parseFloat(buyPrice) });
+                document.getElementById('buy-price').value = ''; // Limpiar input
+                showScreen('end-screen');
+            } else {
+                document.getElementById('feedback').textContent = 'Por favor, introduce un precio válido.';
+            }
+        }
+
+        // --- Reiniciar juego ---
+        function restartGame() {
+            participantId = null;
+            allaisChoice1 = '';
+            allaisChoice2 = '';
+            showScreen('intro-screen');
+        }
+
+        // --- Asegurar que la pantalla inicial se muestre al cargar ---
+        document.addEventListener('DOMContentLoaded', () => {
+            showScreen('intro-screen');
+        });
+    </script>
+</body>
+</html>
